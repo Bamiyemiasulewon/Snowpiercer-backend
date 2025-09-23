@@ -107,11 +107,14 @@ app.add_middleware(
         os.getenv("FRONTEND_URL", "http://localhost:3000"),
         "http://localhost:3000",
         "http://127.0.0.1:3000",
-        "https://localhost:3000"
+        "https://localhost:3000",
+        "http://172.27.208.1:3000",  # Network address from Next.js output
+        "*"  # Allow all origins for development (remove in production)
     ],
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_methods=["*"],  # Allow all methods
     allow_headers=["*"],
+    expose_headers=["*"]  # Expose all headers
 )
 
 # Rate limiting temporarily disabled
@@ -120,7 +123,7 @@ app.add_middleware(
 # app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # Include API routes
-app.include_router(router)
+app.include_router(router, prefix="/api")
 
 # Global exception handler
 @app.exception_handler(Exception)
