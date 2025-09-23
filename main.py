@@ -9,6 +9,12 @@ from dotenv import load_dotenv
 from api.routes import router
 from services.jupiter import JupiterService
 from services.volume_simulator import VolumeSimulator
+from services.trade_executor import TradeExecutor
+from services.trending_strategy import TrendingStrategy
+# Rate limiting temporarily disabled
+# from slowapi import Limiter, _rate_limit_exceeded_handler
+# from slowapi.util import get_remote_address
+# from slowapi.errors import RateLimitExceeded
 
 # Load environment variables
 load_dotenv()
@@ -28,6 +34,8 @@ logger = logging.getLogger(__name__)
 # Global service instances
 _jupiter_service: JupiterService = None
 _volume_simulator: VolumeSimulator = None
+_trade_executor: TradeExecutor = None
+_trending_strategy: TrendingStrategy = None
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -37,17 +45,21 @@ async def lifespan(app: FastAPI):
     # Startup
     logger.info("Starting VolumeBot backend...")
     
-    global _jupiter_service, _volume_simulator
+    global _jupiter_service, _volume_simulator, _trade_executor, _trending_strategy
     
     try:
         # Initialize services
         _jupiter_service = JupiterService()
         _volume_simulator = VolumeSimulator(_jupiter_service)
+        _trade_executor = TradeExecutor(_jupiter_service)
+        _trending_strategy = TrendingStrategy(_jupiter_service)
         
         # Set global references for dependency injection
         import api.routes
         api.routes.jupiter_service = _jupiter_service
         api.routes.volume_simulator = _volume_simulator
+        api.routes.trade_executor = _trade_executor
+        api.routes.trending_strategy = _trending_strategy
         
         logger.info("Services initialized successfully")
         
@@ -101,6 +113,11 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
+
+# Rate limiting temporarily disabled
+# limiter = Limiter(key_func=get_remote_address)
+# app.state.limiter = limiter
+# app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # Include API routes
 app.include_router(router)

@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field, validator
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 from enum import Enum
 
 
@@ -73,3 +73,215 @@ class ErrorResponse(BaseModel):
 class TokenListResponse(BaseModel):
     tokens: List[Token] = Field(..., description="List of supported tokens")
     count: int = Field(..., description="Number of tokens returned")
+
+
+# Wallet Connection Models
+class WalletConnectionRequest(BaseModel):
+    publicKey: str = Field(..., description="Wallet public key")
+    signature: Optional[str] = Field(None, description="Signature for wallet verification")
+
+    @validator('publicKey')
+    def validate_public_key(cls, v):
+        if not v or len(v) < 32:
+            raise ValueError('Invalid Solana public key')
+        return v
+
+
+class WalletInfo(BaseModel):
+    publicKey: str = Field(..., description="Wallet public key")
+    balance: float = Field(..., description="SOL balance")
+    connected: bool = Field(..., description="Connection status")
+    lastUpdate: str = Field(..., description="Last update timestamp")
+
+
+# Trade Execution Models
+class TradeExecutionRequest(BaseModel):
+    walletPublicKey: str = Field(..., description="Wallet public key for execution")
+    tokenMint: str = Field(..., description="Target token mint address")
+    numTrades: int = Field(..., description="Number of buy-sell pairs", ge=1, le=1000)
+    durationMinutes: int = Field(..., description="Duration in minutes", ge=1, le=1440)
+    tradeSizeSol: float = Field(..., description="Trade size in SOL", ge=0.001, le=10.0)
+    slippageBps: int = Field(default=50, description="Slippage tolerance in bps", ge=1, le=10000)
+    strategy: str = Field(default="balanced", description="Trading strategy: balanced, aggressive, organic")
+
+
+class TradeStatus(str, Enum):
+    PENDING = "pending"
+    RUNNING = "running"
+    PAUSED = "paused"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+
+
+class TradeExecutionResponse(BaseModel):
+    executionId: str = Field(..., description="Unique execution ID")
+    status: TradeStatus = Field(..., description="Current execution status")
+    message: str = Field(..., description="Status message")
+    estimatedCompletionTime: Optional[str] = Field(None, description="Estimated completion time")
+
+
+# WebSocket Models
+class WSMessageType(str, Enum):
+    TRADE_UPDATE = "trade_update"
+    STATUS_UPDATE = "status_update"
+    ERROR = "error"
+    PING = "ping"
+    PONG = "pong"
+
+
+class WSMessage(BaseModel):
+    type: WSMessageType = Field(..., description="Message type")
+    data: dict = Field(default={}, description="Message data")
+    timestamp: str = Field(..., description="Message timestamp")
+    executionId: Optional[str] = Field(None, description="Related execution ID")
+
+
+class TradeUpdate(BaseModel):
+    executionId: str = Field(..., description="Execution ID")
+    tradeNumber: int = Field(..., description="Current trade number")
+    totalTrades: int = Field(..., description="Total trades planned")
+    status: TradeStatus = Field(..., description="Current status")
+    volumeGenerated: float = Field(..., description="Volume generated so far (USD)")
+    feesSpent: float = Field(..., description="Fees spent so far (SOL)")
+    progress: float = Field(..., description="Progress percentage (0-100)")
+    lastTradeResult: Optional[dict] = Field(None, description="Last trade result")
+    estimatedTimeRemaining: Optional[int] = Field(None, description="Estimated minutes remaining")
+
+
+# History and Monitoring Models
+class TradeHistoryEntry(BaseModel):
+    executionId: str = Field(..., description="Execution ID")
+    timestamp: str = Field(..., description="Trade timestamp")
+    tokenMint: str = Field(..., description="Token mint address")
+    tradeType: str = Field(..., description="buy or sell")
+    amount: float = Field(..., description="Trade amount in SOL")
+    price: Optional[float] = Field(None, description="Execution price")
+    fees: float = Field(..., description="Fees paid in SOL")
+    status: str = Field(..., description="Trade status")
+    txSignature: Optional[str] = Field(None, description="Transaction signature")
+
+
+class ExecutionSummary(BaseModel):
+    executionId: str = Field(..., description="Execution ID")
+    walletPublicKey: str = Field(..., description="Wallet used")
+    tokenMint: str = Field(..., description="Token traded")
+    startTime: str = Field(..., description="Start timestamp")
+    endTime: Optional[str] = Field(None, description="End timestamp")
+    status: TradeStatus = Field(..., description="Final status")
+    tradesCompleted: int = Field(..., description="Number of trades completed")
+    totalVolume: float = Field(..., description="Total volume generated (USD)")
+    totalFees: float = Field(..., description="Total fees paid (SOL)")
+    efficiency: Optional[float] = Field(None, description="Execution efficiency score")
+
+
+class TradeHistoryResponse(BaseModel):
+    trades: List[TradeHistoryEntry] = Field(..., description="Trade history entries")
+    total: int = Field(..., description="Total trades")
+    page: int = Field(..., description="Current page")
+    pageSize: int = Field(..., description="Page size")
+
+
+class ExecutionListResponse(BaseModel):
+    executions: List[ExecutionSummary] = Field(..., description="Execution summaries")
+    total: int = Field(..., description="Total executions")
+    active: int = Field(..., description="Currently active executions")
+
+
+# Trending Models
+class TrendingPlatform(str, Enum):
+    DEXSCREENER = "dexscreener"
+    DEXTOOLS = "dextools"
+    JUPITER = "jupiter"
+    BIRDEYE = "birdeye"
+    SOLSCAN = "solscan"
+    ALL = "all"
+
+
+class TrendingIntensity(str, Enum):
+    ORGANIC = "organic"        # Subtle, long-term trending
+    AGGRESSIVE = "aggressive"  # Fast, high-volume trending
+    STEALTH = "stealth"       # Undetectable, gradual trending
+    VIRAL = "viral"           # Maximum visibility trending
+
+
+class PlatformCostEstimate(BaseModel):
+    platform: str = Field(..., description="Platform name")
+    volumeRequired: float = Field(..., description="Minimum volume required in USD")
+    transactionsRequired: int = Field(..., description="Minimum transactions required")
+    estimatedCostSOL: float = Field(..., description="Estimated cost in SOL")
+    successProbability: float = Field(..., description="Estimated success probability")
+    timeToTrend: str = Field(..., description="Estimated time to trend")
+    difficulty: str = Field(..., description="Difficulty level")
+
+
+class MultiPlatformCostRequest(BaseModel):
+    tokenMint: str = Field(..., description="Target token mint address")
+    platforms: List[TrendingPlatform] = Field(..., description="Selected platforms for trending")
+    intensity: TrendingIntensity = Field(default=TrendingIntensity.AGGRESSIVE, description="Trending intensity")
+    currentVolume: float = Field(default=0, description="Current 24h volume")
+
+    @validator('platforms')
+    def validate_platforms(cls, v):
+        if not v or len(v) == 0:
+            raise ValueError('At least one platform must be selected')
+        if len(v) > 5:
+            raise ValueError('Maximum 5 platforms can be selected')
+        return v
+
+
+class MultiPlatformCostResponse(BaseModel):
+    tokenMint: str = Field(..., description="Token mint address")
+    selectedPlatforms: List[str] = Field(..., description="Selected platform names")
+    platformCosts: List[PlatformCostEstimate] = Field(..., description="Cost estimates per platform")
+    totalCostSOL: float = Field(..., description="Total estimated cost in SOL")
+    totalVolumeRequired: float = Field(..., description="Total volume required in USD")
+    totalTransactions: int = Field(..., description="Total transactions required")
+    estimatedDuration: str = Field(..., description="Estimated completion time")
+    overallSuccessProbability: float = Field(..., description="Overall success probability")
+    recommendations: str = Field(..., description="Strategy recommendations")
+
+
+class TrendingExecutionRequest(BaseModel):
+    walletPublicKey: str = Field(..., description="Wallet public key for execution")
+    tokenMint: str = Field(..., description="Target token mint address")
+    platforms: List[TrendingPlatform] = Field(..., description="Target platforms for trending")
+    intensity: TrendingIntensity = Field(..., description="Trending intensity level")
+    timeWindowHours: int = Field(..., description="Time window to achieve targets", ge=1, le=24)
+    priceImpactTolerance: float = Field(default=2.0, description="Max price impact per trade %", ge=0.1, le=10.0)
+    useMultipleWallets: bool = Field(default=False, description="Simulate multiple traders")
+    includeFailedTxs: bool = Field(default=True, description="Include realistic failed transactions")
+
+    @validator('tokenMint')
+    def validate_token_mint(cls, v):
+        if not v or len(v) < 32:
+            raise ValueError('Invalid token mint address')
+        return v
+
+
+class TrendingRecommendation(BaseModel):
+    platform: str = Field(..., description="Platform name")
+    volumeNeeded24h: float = Field(..., description="Volume needed for trending")
+    estimatedCostSol: float = Field(..., description="Estimated cost in SOL")
+    minimumTransactions: int = Field(..., description="Minimum transactions required")
+    recommendedIntensity: TrendingIntensity = Field(..., description="Recommended intensity")
+    timeToTrend: str = Field(..., description="Estimated time to achieve trending")
+    successProbability: float = Field(..., description="Success probability (0-1)")
+
+
+class TrendingAnalysisResponse(BaseModel):
+    tokenMint: str = Field(..., description="Token mint address")
+    currentVolume24h: float = Field(..., description="Current 24h volume")
+    recommendations: List[TrendingRecommendation] = Field(..., description="Trending recommendations")
+    optimalTiming: Dict[str, Any] = Field(..., description="Optimal timing information")
+    estimatedProbabilities: Dict[str, float] = Field(..., description="Success probabilities by platform")
+
+
+class TrendingExecutionResponse(BaseModel):
+    executionId: str = Field(..., description="Unique execution ID")
+    status: TradeStatus = Field(..., description="Current execution status")
+    message: str = Field(..., description="Status message")
+    platform: TrendingPlatform = Field(..., description="Target platform")
+    intensity: TrendingIntensity = Field(..., description="Trending intensity")
+    estimatedCompletionTime: Optional[str] = Field(None, description="Estimated completion time")
+    trendingProbability: float = Field(..., description="Estimated trending probability")
