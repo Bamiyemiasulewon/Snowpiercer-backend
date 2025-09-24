@@ -1,6 +1,8 @@
+# UPDATED FOR SMITHII LOGIC: Enhanced models for advanced volume bot
 from pydantic import BaseModel, Field, validator
 from typing import Optional, List, Dict, Any
 from enum import Enum
+import time
 
 
 class HealthResponse(BaseModel):
@@ -15,11 +17,26 @@ class Token(BaseModel):
     logoURI: Optional[str] = Field(None, description="Token logo URL")
 
 
+# UPDATED FOR SMITHII LOGIC: Enhanced bot mode enumeration
+class BotMode(str, Enum):
+    BOOST = "boost"
+    BUMP = "bump" 
+    ADVANCED = "advanced"
+    TRENDING = "trending"
+
 class SwapQuoteRequest(BaseModel):
     inputMint: str = Field(..., description="Input token mint address", min_length=32, max_length=44)
     outputMint: str = Field(..., description="Output token mint address", min_length=32, max_length=44)
     amount: int = Field(..., description="Amount in lamports/smallest unit", gt=0)
     slippageBps: int = Field(default=50, description="Slippage tolerance in basis points", ge=1, le=10000)
+    
+    # UPDATED FOR SMITHII LOGIC: Added bot parameters to swap quote
+    mode: Optional[BotMode] = Field(None, description="Bot execution mode")
+    num_makers: Optional[int] = Field(None, ge=100, le=10000, description="Number of maker wallets")
+    duration_hours: Optional[float] = Field(None, ge=1, le=24, description="Bot duration in hours")
+    trade_size_sol: Optional[float] = Field(None, ge=0.01, le=0.1, description="Trade size in SOL")
+    target_price_usd: Optional[float] = Field(None, description="Target price for Bump mode")
+    use_jito: Optional[bool] = Field(False, description="Use Jito MEV protection")
 
     @validator('inputMint', 'outputMint')
     def validate_mint_address(cls, v):
@@ -40,6 +57,11 @@ class SwapQuoteResponse(BaseModel):
     outputAmount: int = Field(..., description="Estimated output amount")
     priceImpact: float = Field(..., description="Price impact percentage")
     marketInfos: List[dict] = Field(default=[], description="Market route information")
+    
+    # UPDATED FOR SMITHII LOGIC: Enhanced response for bot modes
+    estimated_volume: Optional[float] = Field(None, description="Estimated volume for bot mode")
+    estimated_makers: Optional[int] = Field(None, description="Estimated makers for bot mode")
+    mode_analysis: Optional[Dict[str, Any]] = Field(None, description="Mode-specific analysis")
 
 
 class VolumeSimulationRequest(BaseModel):
@@ -285,3 +307,91 @@ class TrendingExecutionResponse(BaseModel):
     intensity: TrendingIntensity = Field(..., description="Trending intensity")
     estimatedCompletionTime: Optional[str] = Field(None, description="Estimated completion time")
     trendingProbability: float = Field(..., description="Estimated trending probability")
+
+
+# UPDATED FOR SMITHII LOGIC: Advanced bot models
+class BotParams(BaseModel):
+    # Core parameters
+    user_wallet: str = Field(..., description="User's main wallet address")
+    token_mint: str = Field(..., description="Target token mint address")
+    mode: BotMode = Field(..., description="Bot execution mode")
+    
+    # Trading parameters
+    num_makers: int = Field(..., ge=100, le=10000, description="Number of maker wallets (100-10000)")
+    duration_hours: float = Field(..., ge=1, le=24, description="Bot duration in hours (1-24)")
+    trade_size_sol: float = Field(..., ge=0.01, le=0.1, description="Trade size in SOL (0.01-0.1)")
+    slippage_pct: float = Field(..., ge=0.5, le=2.0, description="Slippage percentage (0.5-2.0)")
+    
+    # Mode-specific parameters
+    target_price_usd: Optional[float] = Field(None, description="Target price for Bump mode")
+    use_jito: bool = Field(False, description="Use Jito MEV protection for Advanced mode")
+    custom_delay_min: Optional[int] = Field(5, ge=5, le=300, description="Min delay between trades (seconds)")
+    custom_delay_max: Optional[int] = Field(60, ge=10, le=600, description="Max delay between trades (seconds)")
+    
+    # Trending-specific fields (compatibility with existing frontend)
+    selected_platforms: Optional[List[str]] = Field(None, description="Selected platforms for trending")
+    trending_intensity: Optional[str] = Field(None, description="Trending intensity level")
+    
+    @validator('target_price_usd')
+    def validate_target_price(cls, v, values):
+        if values.get('mode') == BotMode.BUMP and v is None:
+            raise ValueError("target_price_usd is required for Bump mode")
+        return v
+
+
+class BotJob(BaseModel):
+    job_id: str
+    user_wallet: str
+    status: str = "created"  # created, running, completed, failed, cancelled
+    params: BotParams
+    created_at: float = Field(default_factory=time.time)
+    started_at: Optional[float] = None
+    completed_at: Optional[float] = None
+    
+    # Progress tracking
+    completed_makers: int = 0
+    generated_volume: float = 0.0
+    current_buy_ratio: float = 0.0
+    total_transactions: int = 0
+    successful_transactions: int = 0
+    failed_transactions: int = 0
+    
+    # Sub-wallet tracking
+    generated_wallets: List[str] = []
+    active_wallets: int = 0
+    
+    error_message: Optional[str] = None
+
+
+class BotProgressResponse(BaseModel):
+    job_id: str
+    status: str
+    completed_makers: int
+    total_makers: int
+    generated_volume: float
+    current_buy_ratio: float
+    progress_percentage: float
+    estimated_completion: Optional[float] = None
+    transactions: Dict[str, int]
+    active_wallets: int
+    error_message: Optional[str] = None
+
+
+class SubWallet(BaseModel):
+    address: str
+    balance_sol: float = 0.0
+    balance_token: float = 0.0
+    transactions_completed: int = 0
+    created_at: float = Field(default_factory=time.time)
+
+
+class TrendingMetrics(BaseModel):
+    token_mint: str
+    volume_24h: float
+    makers_24h: int
+    price_change_24h: float
+    
+    # UPDATED FOR SMITHII LOGIC: Mode-specific trending estimates
+    boost_potential: Optional[Dict[str, float]] = None
+    bump_analysis: Optional[Dict[str, Any]] = None
+    advanced_metrics: Optional[Dict[str, Any]] = None

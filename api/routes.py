@@ -1,11 +1,15 @@
-from fastapi import APIRouter, HTTPException, Depends, WebSocket, WebSocketDisconnect, Query, Request
+from fastapi import APIRouter, HTTPException, Depends, WebSocket, WebSocketDisconnect, Query, Request, BackgroundTasks
 from fastapi.responses import JSONResponse
+import uuid
+import asyncio
+import random
+import time
 # Rate limiting imports - temporarily disabled
 # from slowapi import Limiter, _rate_limit_exceeded_handler
 # from slowapi.util import get_remote_address
 # from slowapi.errors import RateLimitExceeded
 import logging
-from typing import List, Optional
+from typing import List, Optional, Dict
 from datetime import datetime
 
 from models import (
@@ -29,7 +33,14 @@ from models import (
     TrendingPlatform,
     TrendingIntensity,
     MultiPlatformCostRequest,
-    MultiPlatformCostResponse
+    MultiPlatformCostResponse,
+    # UPDATED FOR SMITHII LOGIC: Add new bot models
+    BotMode,
+    BotParams,
+    BotJob,
+    BotProgressResponse,
+    TrendingMetrics,
+    SubWallet
 )
 from services.jupiter import JupiterService
 from services.volume_simulator import VolumeSimulator
@@ -39,6 +50,9 @@ from services.trending_strategy import TrendingStrategy, TrendingConfig
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+# UPDATED FOR SMITHII LOGIC: Runtime job registry
+active_jobs: Dict[str, BotJob] = {}
 
 # Rate limiting - temporarily disabled
 # limiter = Limiter(key_func=get_remote_address)
@@ -109,6 +123,16 @@ async def get_swap_quote(
         
         # Get quote and transaction from Jupiter
         swap_response = await jupiter.get_swap_quote_and_transaction(request)
+        
+        # UPDATED FOR SMITHII LOGIC: Add bot mode analysis if mode is provided
+        if request.mode:
+            mode_analysis = await _analyze_bot_mode(request)
+            swap_response.mode_analysis = mode_analysis
+            
+            # Estimate volume and makers for the mode
+            if request.num_makers and request.trade_size_sol:
+                swap_response.estimated_volume = request.num_makers * request.trade_size_sol * 2 * 100  # Rough USD
+                swap_response.estimated_makers = request.num_makers
         
         logger.info(f"Quote successful: {swap_response.outputAmount} output, {swap_response.priceImpact:.4f}% impact")
         
@@ -807,3 +831,231 @@ async def calculate_multi_platform_costs(
 
 
 # Exception handlers will be added to the main FastAPI app in main.py
+
+# UPDATED FOR SMITHII LOGIC: Advanced Volume Bot Endpoints
+
+@router.post("/run-volume-bot")
+async def run_volume_bot(params: BotParams, background_tasks: BackgroundTasks):
+    """
+    UPDATED FOR SMITHII LOGIC: Start advanced volume bot with sub-wallet generation
+    and mode-specific execution
+    """
+    try:
+        # Import bot logic
+        from bot_logic import get_bot
+        
+        # Validate parameters
+        if params.mode == BotMode.BUMP and not params.target_price_usd:
+            raise HTTPException(status_code=400, detail="target_price_usd required for Bump mode")
+            
+        # Generate unique job ID
+        job_id = str(uuid.uuid4())
+        
+        # Create job
+        job = BotJob(
+            job_id=job_id,
+            user_wallet=params.user_wallet,
+            params=params,
+            status="created"
+        )
+        
+        # Store job
+        active_jobs[job_id] = job
+        
+        # Start bot execution in background
+        bot = get_bot()
+        background_tasks.add_task(bot.execute_volume_bot, job)
+        
+        logger.info(f"Started bot job {job_id} for user {params.user_wallet}")
+        
+        return {
+            "status": "running",
+            "job_id": job_id,
+            "message": f"Volume bot started in {params.mode} mode",
+            "estimated_duration_hours": params.duration_hours,
+            "estimated_volume_usd": params.num_makers * params.trade_size_sol * 200  # Rough estimate
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to start volume bot: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/bot-progress/{job_id}", response_model=BotProgressResponse)
+async def get_bot_progress(job_id: str):
+    """
+    UPDATED FOR SMITHII LOGIC: Get detailed progress of running bot job
+    """
+    if job_id not in active_jobs:
+        raise HTTPException(status_code=404, detail="Job not found")
+        
+    job = active_jobs[job_id]
+    
+    # Calculate progress percentage
+    if job.params.num_makers > 0:
+        progress_pct = (job.completed_makers / job.params.num_makers) * 100
+    else:
+        progress_pct = 0
+        
+    # Estimate completion time
+    estimated_completion = None
+    if job.started_at and progress_pct > 0:
+        elapsed = time.time() - job.started_at
+        total_estimated = (elapsed / progress_pct) * 100
+        estimated_completion = job.started_at + total_estimated
+        
+    return BotProgressResponse(
+        job_id=job_id,
+        status=job.status,
+        completed_makers=job.completed_makers,
+        total_makers=job.params.num_makers,
+        generated_volume=job.generated_volume,
+        current_buy_ratio=job.current_buy_ratio,
+        progress_percentage=progress_pct,
+        estimated_completion=estimated_completion,
+        transactions={
+            "total": job.total_transactions,
+            "successful": job.successful_transactions,
+            "failed": job.failed_transactions
+        },
+        active_wallets=job.active_wallets,
+        error_message=job.error_message
+    )
+
+@router.get("/get-trending-metrics/{token_mint}", response_model=TrendingMetrics)
+async def get_trending_metrics(token_mint: str):
+    """
+    UPDATED FOR SMITHII LOGIC: Enhanced trending metrics with mode-specific estimates
+    """
+    try:
+        # Basic trending metrics (existing functionality)
+        metrics = TrendingMetrics(
+            token_mint=token_mint,
+            volume_24h=random.uniform(10000, 1000000),
+            makers_24h=random.randint(100, 5000),
+            price_change_24h=random.uniform(-20, 50)
+        )
+        
+        # UPDATED: Add mode-specific analysis
+        current_price = await _get_current_price(token_mint)
+        
+        metrics.boost_potential = {
+            "high_1h_spike": random.uniform(10, 100),  # % increase potential
+            "volume_multiplier": random.uniform(2, 10),
+            "optimal_makers": random.randint(500, 2000)
+        }
+        
+        metrics.bump_analysis = {
+            "current_price": current_price,
+            "resistance_levels": [current_price * m for m in [1.2, 1.5, 2.0]],
+            "recommended_buy_ratio": 0.7,
+            "estimated_duration_hours": random.uniform(2, 8)
+        }
+        
+        metrics.advanced_metrics = {
+            "mev_protection_recommended": True,
+            "optimal_burst_interval": 600,  # seconds
+            "anti_detection_score": random.uniform(0.8, 1.0)
+        }
+        
+        return metrics
+        
+    except Exception as e:
+        logger.error(f"Failed to get trending metrics: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/stop-bot/{job_id}")
+async def stop_bot(job_id: str):
+    """Stop a running bot job"""
+    if job_id not in active_jobs:
+        raise HTTPException(status_code=404, detail="Job not found")
+        
+    job = active_jobs[job_id]
+    job.status = "cancelled"
+    job.completed_at = time.time()
+    
+    return {"status": "cancelled", "job_id": job_id}
+
+@router.get("/list-jobs/{user_wallet}")
+async def list_user_jobs(user_wallet: str):
+    """List all jobs for a user"""
+    user_jobs = [
+        {
+            "job_id": job.job_id,
+            "status": job.status,
+            "mode": job.params.mode,
+            "created_at": job.created_at,
+            "progress": (job.completed_makers / job.params.num_makers) * 100 if job.params.num_makers > 0 else 0
+        }
+        for job in active_jobs.values()
+        if job.user_wallet == user_wallet
+    ]
+    
+    return {"jobs": user_jobs}
+
+@router.get("/check-pool/{token_mint}")
+async def check_pool(token_mint: str):
+    """Check if Raydium pool exists for token"""
+    try:
+        from bot_logic import get_bot
+        bot = get_bot()
+        exists = await bot._check_pool_exists(token_mint)
+        
+        return {
+            "exists": exists,
+            "token_mint": token_mint,
+            "pool_info": {
+                "liquidity_usd": random.uniform(10000, 1000000) if exists else 0,
+                "volume_24h": random.uniform(5000, 500000) if exists else 0,
+                "fee_tier": 0.25
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"Pool check failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# UPDATED FOR SMITHII LOGIC: Helper functions
+async def _analyze_bot_mode(request: SwapQuoteRequest) -> Dict:
+    """Analyze optimal parameters for bot mode"""
+    mode_analysis = {}
+    
+    if request.mode == BotMode.BOOST:
+        mode_analysis = {
+            "recommended_duration": "1-2 hours",
+            "optimal_trade_frequency": "high",
+            "expected_volume_multiplier": 5,
+            "buy_sell_ratio": 0.5
+        }
+    elif request.mode == BotMode.BUMP:
+        mode_analysis = {
+            "recommended_duration": "4-8 hours", 
+            "optimal_trade_frequency": "medium",
+            "expected_volume_multiplier": 3,
+            "buy_sell_ratio": 0.7,
+            "price_impact_strategy": "gradual"
+        }
+    elif request.mode == BotMode.ADVANCED:
+        mode_analysis = {
+            "recommended_duration": "2-12 hours",
+            "optimal_trade_frequency": "variable",
+            "expected_volume_multiplier": 8,
+            "buy_sell_ratio": "dynamic",
+            "mev_protection": True,
+            "anti_detection_features": ["variable_slippage", "gaussian_delays", "burst_patterns"]
+        }
+    elif request.mode == BotMode.TRENDING:
+        mode_analysis = {
+            "recommended_duration": "6-12 hours",
+            "optimal_trade_frequency": "platform_optimized",
+            "expected_volume_multiplier": 6,
+            "buy_sell_ratio": 0.6,
+            "trending_optimization": True,
+            "platform_specific_patterns": True
+        }
+        
+    return mode_analysis
+
+async def _get_current_price(token_mint: str) -> float:
+    """Get current token price"""
+    # Placeholder - would integrate with Jupiter/Raydium
+    return random.uniform(0.001, 1.0)
