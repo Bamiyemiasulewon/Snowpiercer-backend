@@ -109,18 +109,47 @@ app.add_middleware(
         "http://127.0.0.1:3000",
         "https://localhost:3000",
         "http://172.27.208.1:3000",  # Network address from Next.js output
-        "*"  # Allow all origins for development (remove in production)
+        # Production URLs - Add your frontend domains here
+        "https://snowpiercer-backend-1.onrender.com",  # Backend URL (for API docs access)
+        "https://volumebot-frontend.vercel.app",  # Common frontend deployment pattern
+        "https://snowpiercer-frontend.vercel.app",  # Matching frontend pattern
+        "https://snowpiercer-frontend.netlify.app",  # Alternative frontend pattern
+        "*" if os.getenv("DEBUG", "False").lower() == "true" else None  # Allow all origins only in debug mode
     ],
     allow_credentials=True,
-    allow_methods=["*"],  # Allow all methods
+    allow_methods=["*"],
     allow_headers=["*"],
-    expose_headers=["*"]  # Expose all headers
+    expose_headers=["*"]
 )
 
 # Rate limiting temporarily disabled
 # limiter = Limiter(key_func=get_remote_address)
 # app.state.limiter = limiter
 # app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+# Root endpoint for basic info
+@app.get("/")
+async def root():
+    """Root endpoint with basic API information"""
+    return {
+        "name": "VolumeBot Backend",
+        "version": "1.0.0",
+        "status": "running",
+        "backend_url": "https://snowpiercer-backend-1.onrender.com",
+        "docs_url": "/docs",
+        "api_prefix": "/api",
+        "description": "Professional Solana volume bot backend API using Jupiter aggregator"
+    }
+
+# Health check endpoint
+@app.get("/health")
+async def health_check():
+    """Health check endpoint for monitoring"""
+    return {
+        "status": "healthy",
+        "timestamp": "2025-01-24T06:26:36Z",
+        "backend_url": "https://snowpiercer-backend-1.onrender.com"
+    }
 
 # Include API routes
 app.include_router(router, prefix="/api")

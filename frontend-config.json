@@ -1,0 +1,35 @@
+{
+  "backend": {
+    "baseUrl": "https://snowpiercer-backend-1.onrender.com",
+    "apiUrl": "https://snowpiercer-backend-1.onrender.com/api",
+    "wsUrl": "wss://snowpiercer-backend-1.onrender.com/ws",
+    "docsUrl": "https://snowpiercer-backend-1.onrender.com/docs"
+  },
+  "endpoints": {
+    "health": "/health",
+    "tokens": "/api/tokens",
+    "quote": "/api/quote", 
+    "swap": "/api/swap",
+    "volume": "/api/volume",
+    "simulate": "/api/simulate",
+    "status": "/api/status"
+  },
+  "environment": {
+    "production": true,
+    "debug": false,
+    "version": "1.0.0"
+  },
+  "cors": {
+    "allowedOrigins": [
+      "https://volumebot-frontend.vercel.app",
+      "https://snowpiercer-frontend.vercel.app", 
+      "https://snowpiercer-frontend.netlify.app",
+      "http://localhost:3000"
+    ]
+  },
+  "instructions": {
+    "frontend_setup": "Copy this configuration to your frontend project",
+    "api_usage": "Use baseUrl + endpoint path for API calls",
+    "example": "fetch('https://snowpiercer-backend-1.onrender.com/api/tokens')"
+  }
+}
