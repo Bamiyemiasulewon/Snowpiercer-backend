@@ -71,6 +71,7 @@ export const useAPI = () => {
 
 ## CORS Configuration
 Your backend is configured to accept requests from:
+- `https://snowpiercer-pi.vercel.app` ✅ **YOUR FRONTEND**
 - `http://localhost:3000` (development)
 - `https://volumebot-frontend.vercel.app`
 - `https://snowpiercer-frontend.vercel.app`

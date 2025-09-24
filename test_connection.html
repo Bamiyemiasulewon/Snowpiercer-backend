@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Snowpiercer Frontend-Backend Connection Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #0f0f23;
+            color: #cccccc;
+        }
+        .container {
+            background: #1a1a2e;
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+        }
+        .status {
+            padding: 10px;
+            border-radius: 5px;
+            margin: 10px 0;
+        }
+        .success { background: #2d5a2d; border-left: 4px solid #4caf50; }
+        .error { background: #5a2d2d; border-left: 4px solid #f44336; }
+        .warning { background: #5a5a2d; border-left: 4px solid #ff9800; }
+        .info { background: #2d2d5a; border-left: 4px solid #2196f3; }
+        button {
+            background: #4caf50;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover { background: #45a049; }
+        .loading { opacity: 0.6; pointer-events: none; }
+        pre { background: #0a0a0a; padding: 10px; border-radius: 5px; overflow-x: auto; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚀 Snowpiercer Connection Test</h1>
+        <p><strong>Frontend:</strong> https://snowpiercer-pi.vercel.app/</p>
+        <p><strong>Backend:</strong> https://snowpiercer-backend-1.onrender.com</p>
+        
+        <button onclick="runTests()">🧪 Run Connection Tests</button>
+        <button onclick="testVolumeBot()">🤖 Test Volume Bot Endpoints</button>
+        <button onclick="clearResults()">🧹 Clear Results</button>
+    </div>
+
+    <div class="container">
+        <h2>Connection Status</h2>
+        <div id="results"></div>
+    </div>
+
+    <script>
+        const BACKEND_URL = 'https://snowpiercer-backend-1.onrender.com';
+        const API_BASE = `${BACKEND_URL}/api`;
+        
+        function log(message, type = 'info') {
+            const results = document.getElementById('results');
+            const div = document.createElement('div');
+            div.className = `status ${type}`;
+            div.innerHTML = message;
+            results.appendChild(div);
+            console.log(message);
+        }
+
+        function clearResults() {
+            document.getElementById('results').innerHTML = '';
+        }
+
+        async function testEndpoint(name, url, method = 'GET', body = null) {
+            try {
+                log(`🔄 Testing ${name}...`, 'info');
+                
+                const options = {
+                    method,
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json'
+                    }
+                };
+                
+                if (body) {
+                    options.body = JSON.stringify(body);
+                }
+                
+                const response = await fetch(url, options);
+                
+                if (response.ok) {
+                    const data = await response.text();
+                    log(`✅ ${name}: SUCCESS (${response.status})`, 'success');
+                    
+                    try {
+                        const json = JSON.parse(data);
+                        log(`<pre>${JSON.stringify(json, null, 2)}</pre>`, 'success');
+                    } catch (e) {
+                        log(`<pre>${data.substring(0, 200)}...</pre>`, 'success');
+                    }
+                    
+                    return true;
+                } else {
+                    log(`❌ ${name}: HTTP ${response.status} - ${response.statusText}`, 'error');
+                    return false;
+                }
+                
+            } catch (error) {
+                log(`❌ ${name}: ${error.message}`, 'error');
+                if (error.message.includes('fetch')) {
+                    log(`⚠️ This might be a CORS issue or the backend is sleeping`, 'warning');
+                }
+                return false;
+            }
+        }
+
+        async function runTests() {
+            clearResults();
+            log('🚀 Starting connection tests...', 'info');
+            log('⏳ Note: First request may take 30+ seconds if backend is sleeping', 'warning');
+            
+            const tests = [
+                ['Root Endpoint', `${BACKEND_URL}/`],
+                ['Health Check', `${BACKEND_URL}/health`],
+                ['API Docs', `${BACKEND_URL}/docs`],
+                ['API Tokens', `${API_BASE}/tokens`],
+                ['API Status', `${API_BASE}/status`]
+            ];
+            
+            let successCount = 0;
+            
+            for (const [name, url] of tests) {
+                const success = await testEndpoint(name, url);
+                if (success) successCount++;
+                
+                // Add delay between requests to avoid overwhelming the server
+                await new Promise(resolve => setTimeout(resolve, 1000));
+            }
+            
+            if (successCount === tests.length) {
+                log(`🎉 All tests passed! Frontend can connect to backend.`, 'success');
+            } else if (successCount > 0) {
+                log(`⚠️ ${successCount}/${tests.length} tests passed. Some endpoints may not be implemented yet.`, 'warning');
+            } else {
+                log(`❌ No tests passed. Backend may be sleeping or there's a configuration issue.`, 'error');
+                log(`💡 Try again in 30-60 seconds if using Render free tier.`, 'info');
+            }
+        }
+
+        async function testVolumeBot() {
+            clearResults();
+            log('🤖 Testing Volume Bot specific endpoints...', 'info');
+            
+            const botTests = [
+                ['Bot Status', `${API_BASE}/bot/status`],
+                ['Volume Simulate', `${API_BASE}/simulate`],
+                ['Quote', `${API_BASE}/quote`],
+                ['Config', `${API_BASE}/config`]
+            ];
+            
+            for (const [name, url] of botTests) {
+                await testEndpoint(name, url);
+                await new Promise(resolve => setTimeout(resolve, 1000));
+            }
+        }
+
+        // Auto-run tests when page loads
+        window.onload = () => {
+            log('📋 Connection test page loaded. Click "Run Connection Tests" to start.', 'info');
+        };
+    </script>
+</body>
+</html>
