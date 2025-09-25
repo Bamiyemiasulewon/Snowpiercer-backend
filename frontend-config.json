@@ -21,6 +21,7 @@
   },
   "cors": {
     "allowedOrigins": [
+      "https://snowpiercer-sepia.vercel.app",
       "https://volumebot-frontend.vercel.app",
       "https://snowpiercer-frontend.vercel.app", 
       "https://snowpiercer-frontend.netlify.app",
