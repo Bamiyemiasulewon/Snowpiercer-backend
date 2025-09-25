@@ -136,6 +136,7 @@ async def root():
         "name": "VolumeBot Backend",
         "version": "1.0.0",
         "status": "running",
+        "ready": True,
         "backend_url": "https://snowpiercer-backend-1.onrender.com",
         "docs_url": "/docs",
         "api_prefix": "/api",

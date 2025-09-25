@@ -197,6 +197,18 @@ async def get_bot_status():
         "jobs": list(active_jobs.keys()) if active_jobs else []
     }
 
+@router.get("/quick-status")
+async def get_quick_status():
+    """
+    Ultra-fast status endpoint for initial frontend loading
+    Returns minimal data for fastest possible response
+    """
+    return {
+        "ready": True,
+        "status": "operational",
+        "isRunning": len(active_jobs) > 0
+    }
+
 @router.post("/get-swap-quote", response_model=SwapQuoteResponse)
 async def get_swap_quote(
     request: SwapQuoteRequest,
