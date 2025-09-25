@@ -1,0 +1,43 @@
+# Environment Variables for Render Deployment
+# Copy these into your Render service's Environment tab
+
+# Solana Configuration
+SOLANA_RPC_URL=https://api.mainnet-beta.solana.com
+SOLANA_NETWORK=mainnet-beta
+
+# Jupiter Configuration  
+JUPITER_API_BASE_URL=https://quote-api.jup.ag/v6
+
+# Server Configuration (Render will set PORT automatically)
+HOST=0.0.0.0
+DEBUG=False
+
+# CORS Configuration
+FRONTEND_URL=https://snowpiercer-sepia.vercel.app
+FRONTEND_URL_DEV=http://localhost:3000
+
+# Production Backend URL
+BACKEND_URL=https://snowpiercer-backend-1.onrender.com
+API_BASE_URL=https://snowpiercer-backend-1.onrender.com/api
+
+# Advanced bot configuration
+JITO_ENDPOINT=https://mainnet.block-engine.jito.wtf
+
+# Redis configuration (if you add Redis later)
+# REDIS_URL=redis://your-redis-instance-url
+
+# Security
+MAX_CONCURRENT_JOBS=10
+MAX_MAKERS_PER_JOB=10000
+MIN_TRADE_SIZE_SOL=0.01
+MAX_TRADE_SIZE_SOL=0.1
+
+# Logging
+LOG_LEVEL=INFO
+LOG_FILE=volume_bot.log
+
+# Important Notes:
+# 1. Do NOT set PORT in Render - it's automatically provided
+# 2. Set DEBUG=False for production
+# 3. Remove or comment out REDIS_URL if not using Redis yet
+# 4. You can add these one by one in Render's Environment tab
