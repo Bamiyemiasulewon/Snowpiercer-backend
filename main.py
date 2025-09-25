@@ -111,7 +111,7 @@ app.add_middleware(
         "http://172.27.208.1:3000",  # Network address from Next.js output
         # Production URLs - Add your frontend domains here
         "https://snowpiercer-backend-1.onrender.com",  # Backend URL (for API docs access)
-        "https://snowpiercer-pi.vercel.app",  # ACTUAL FRONTEND URL
+        "https://snowpiercer-sepia.vercel.app",  # ACTUAL FRONTEND URL
         "https://volumebot-frontend.vercel.app",  # Common frontend deployment pattern
         "https://snowpiercer-frontend.vercel.app",  # Matching frontend pattern
         "https://snowpiercer-frontend.netlify.app",  # Alternative frontend pattern
