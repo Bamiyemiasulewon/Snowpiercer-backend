@@ -73,8 +73,8 @@ DEBUG=false
 #### API URLs
 ```env
 FRONTEND_URL=https://snowpiercer-pi.vercel.app
-BACKEND_URL=https://your-service-name.onrender.com
-API_BASE_URL=https://your-service-name.onrender.com/api
+BACKEND_URL=https://snowpiercer-backend-1.onrender.com
+API_BASE_URL=https://snowpiercer-backend-1.onrender.com/api
 ```
 
 #### Solana Configuration
@@ -128,13 +128,13 @@ Test these endpoints once deployed:
 
 ```bash
 # Health check
-curl https://your-service.onrender.com/health
+curl https://snowpiercer-backend-1.onrender.com/health
 
 # API status
-curl https://your-service.onrender.com/api/status
+curl https://snowpiercer-backend-1.onrender.com/api/status
 
 # Trending metrics (example)
-curl https://your-service.onrender.com/api/get-trending-metrics/So11111111111111111111111111111111111111112
+curl https://snowpiercer-backend-1.onrender.com/api/get-trending-metrics/So11111111111111111111111111111111111111112
 ```
 
 ### 2. Update Frontend Configuration
@@ -142,15 +142,15 @@ curl https://your-service.onrender.com/api/get-trending-metrics/So11111111111111
 Update your frontend's environment variables to point to the new backend:
 
 ```env
-NEXT_PUBLIC_BACKEND_URL=https://your-service.onrender.com
-NEXT_PUBLIC_API_BASE_URL=https://your-service.onrender.com/api
+NEXT_PUBLIC_BACKEND_URL=https://snowpiercer-backend-1.onrender.com
+NEXT_PUBLIC_API_BASE_URL=https://snowpiercer-backend-1.onrender.com/api
 ```
 
 ### 3. Test Smithii Logic Features
 
 #### Test Bot Creation:
 ```bash
-curl -X POST https://your-service.onrender.com/api/run-volume-bot \
+curl -X POST https://snowpiercer-backend-1.onrender.com/api/run-volume-bot \
   -H "Content-Type: application/json" \
   -d '{
     "user_wallet": "your_wallet_address",
@@ -165,7 +165,7 @@ curl -X POST https://your-service.onrender.com/api/run-volume-bot \
 
 #### Test Trending Analysis:
 ```bash
-curl https://your-service.onrender.com/api/get-trending-metrics/So11111111111111111111111111111111111111112?timeframe=24h
+curl https://snowpiercer-backend-1.onrender.com/api/get-trending-metrics/So11111111111111111111111111111111111111112?timeframe=24h
 ```
 
 ---
