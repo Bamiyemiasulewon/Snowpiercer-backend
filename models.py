@@ -316,8 +316,8 @@ class BotParams(BaseModel):
     token_mint: str = Field(..., description="Target token mint address")
     mode: BotMode = Field(..., description="Bot execution mode")
     
-    # Trading parameters
-    num_makers: int = Field(..., ge=100, le=10000, description="Number of maker wallets (100-10000)")
+    # Trading parameters  
+    num_makers: int = Field(..., ge=10, le=100, description="Number of maker wallets (10-100)")
     duration_hours: float = Field(..., ge=1, le=24, description="Bot duration in hours (1-24)")
     trade_size_sol: float = Field(..., ge=0.01, le=0.1, description="Trade size in SOL (0.01-0.1)")
     slippage_pct: float = Field(..., ge=0.5, le=2.0, description="Slippage percentage (0.5-2.0)")
