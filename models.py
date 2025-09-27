@@ -392,6 +392,7 @@ class TrendingMetrics(BaseModel):
     price_change_24h: float
     
     # UPDATED FOR SMITHII LOGIC: Mode-specific trending estimates
-    boost_potential: Optional[Dict[str, float]] = None
+    boost_potential: Optional[Dict[str, Any]] = None
     bump_analysis: Optional[Dict[str, Any]] = None
     advanced_metrics: Optional[Dict[str, Any]] = None
+    platform_analysis: Optional[Dict[str, Any]] = None

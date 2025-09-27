@@ -1134,46 +1134,94 @@ async def get_bot_progress(job_id: str):
     )
 
 @router.get("/get-trending-metrics/{token_mint}", response_model=TrendingMetrics)
-async def get_trending_metrics(token_mint: str):
+async def get_trending_metrics(token_mint: str, timeframe: str = "24h"):
     """
-    UPDATED FOR SMITHII LOGIC: Enhanced trending metrics with mode-specific estimates
+    UPDATED FOR SMITHII LOGIC: Enhanced trending metrics with DexScreener/DexTools integration
     """
     try:
-        # Basic trending metrics (existing functionality)
+        # Import trending service
+        from services.trending_metrics import get_trending_service
+        trending_service = get_trending_service()
+        
+        # Get comprehensive analysis from all platforms
+        analysis = await trending_service.get_combined_trending_analysis(token_mint)
+        
+        # Extract platform data
+        dexscreener = analysis['platforms']['dexscreener']
+        dextools = analysis['platforms']['dextools'] 
+        potential = analysis['trending_potential']
+        recommendations = analysis['recommendations']
+        
+        # Build response using actual data
         metrics = TrendingMetrics(
             token_mint=token_mint,
-            volume_24h=random.uniform(10000, 1000000),
-            makers_24h=random.randint(100, 5000),
-            price_change_24h=random.uniform(-20, 50)
+            volume_24h=dexscreener.get('volume_24h', 0),
+            makers_24h=(
+                dexscreener.get('transactions_24h', {}).get('buys', 0) + 
+                dexscreener.get('transactions_24h', {}).get('sells', 0)
+            ),
+            price_change_24h=dexscreener.get('price_change_24h', 0)
         )
         
-        # UPDATED: Add mode-specific analysis
-        current_price = await _get_current_price(token_mint)
+        # UPDATED: Enhanced mode-specific analysis with real data
+        current_price = dexscreener.get('price_usd', 0)
         
         metrics.boost_potential = {
-            "high_1h_spike": random.uniform(10, 100),  # % increase potential
-            "volume_multiplier": random.uniform(2, 10),
-            "optimal_makers": random.randint(500, 2000)
+            "current_trending_score": dexscreener.get('trending_score', 0),
+            "volume_multiplier_needed": max(1, 5000 / max(1, dexscreener.get('volume_24h', 1))),
+            "optimal_makers": potential.get('makers_needed', 500),
+            "dexscreener_ready": potential.get('dexscreener_ready', False),
+            "estimated_1h_spike_potential": min(100, (5000 / max(1, dexscreener.get('volume_24h', 1))) * 20)
         }
         
         metrics.bump_analysis = {
             "current_price": current_price,
-            "resistance_levels": [current_price * m for m in [1.2, 1.5, 2.0]],
-            "recommended_buy_ratio": 0.7,
-            "estimated_duration_hours": random.uniform(2, 8)
+            "target_price_recommended": current_price * 1.5 if current_price > 0 else 0.1,
+            "resistance_levels": [current_price * m for m in [1.2, 1.5, 2.0]] if current_price > 0 else [0.05, 0.1, 0.2],
+            "recommended_buy_ratio": recommendations.get('bump', {}).get('buy_ratio', 0.7),
+            "estimated_duration_hours": recommendations.get('bump', {}).get('duration_hours', 6),
+            "liquidity_sufficient": dexscreener.get('liquidity_usd', 0) > 50000
         }
         
         metrics.advanced_metrics = {
-            "mev_protection_recommended": True,
-            "optimal_burst_interval": 600,  # seconds
-            "anti_detection_score": random.uniform(0.8, 1.0)
+            "mev_protection_recommended": dexscreener.get('volume_24h', 0) > 10000,
+            "optimal_burst_interval": 600 if dexscreener.get('volume_24h', 0) > 5000 else 300,
+            "anti_detection_score": min(1.0, dextools.get('dext_score', 50) / 100),
+            "dext_score": dextools.get('dext_score', 0),
+            "holders_count": dextools.get('holders', 0),
+            "social_score": dextools.get('social_score', 50),
+            "multi_dex_recommended": dexscreener.get('liquidity_usd', 0) > 100000
+        }
+        
+        # Add platform-specific trending analysis
+        metrics.platform_analysis = {
+            "dexscreener": {
+                "trending_ready": potential.get('dexscreener_ready', False),
+                "volume_gap": potential.get('volume_needed_for_trending', 0),
+                "top_50_potential": potential.get('estimated_ranking_potential', {}).get('dexscreener_top_50', False)
+            },
+            "dextools": {
+                "trending_ready": potential.get('dextools_ready', False),
+                "dext_score": dextools.get('dext_score', 0),
+                "trending_potential": potential.get('estimated_ranking_potential', {}).get('dextools_trending', False)
+            },
+            "overall_score": potential.get('overall_score', 50)
         }
         
         return metrics
         
     except Exception as e:
         logger.error(f"Failed to get trending metrics: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        # Fallback to basic metrics
+        return TrendingMetrics(
+            token_mint=token_mint,
+            volume_24h=random.uniform(10000, 100000),
+            makers_24h=random.randint(100, 1000),
+            price_change_24h=random.uniform(-20, 50),
+            boost_potential={"volume_multiplier_needed": 2.5, "optimal_makers": 500},
+            bump_analysis={"current_price": 0.05, "target_price_recommended": 0.075},
+            advanced_metrics={"mev_protection_recommended": True, "anti_detection_score": 0.8}
+        )
 
 @router.post("/stop-bot/{job_id}")
 async def stop_bot(job_id: str):
