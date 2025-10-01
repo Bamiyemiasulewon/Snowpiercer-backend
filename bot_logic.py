@@ -38,14 +38,14 @@ class SmithiiVolumeBot:
                                user_keypair: Keypair) -> Tuple[List[SubWallet], List[Keypair], float]:
         """
         UPDATED FOR SMITHII LOGIC: Smart wallet allocation based on available balance
-        - Creates up to 100 wallets with 0.1 SOL each
+        - Creates up to 100 wallets with 0.025 SOL each
         - Allocates based on available balance (stops when balance insufficient)
         - Reserves gas fees and uses only 70% of wallet balance for trading
         """
         import os
         
         # Configuration from environment
-        target_funding_per_wallet = float(os.getenv('SUB_WALLET_FUNDING_SOL', '0.1'))
+        target_funding_per_wallet = float(os.getenv('SUB_WALLET_FUNDING_SOL', '0.025'))
         gas_reserve = float(os.getenv('GAS_FEE_RESERVE_SOL', '0.5'))
         usable_percentage = float(os.getenv('USABLE_BALANCE_PERCENTAGE', '70')) / 100
         
