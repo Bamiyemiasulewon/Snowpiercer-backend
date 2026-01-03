@@ -1,43 +1,88 @@
 # Environment Variables for Render Deployment
 # Copy these into your Render service's Environment tab
 
+# =============================================================================
 # Solana Configuration
+# =============================================================================
 SOLANA_RPC_URL=https://api.mainnet-beta.solana.com
 SOLANA_NETWORK=mainnet-beta
 
+# =============================================================================
 # Jupiter Configuration  
+# =============================================================================
 JUPITER_API_BASE_URL=https://quote-api.jup.ag/v6
 
+# =============================================================================
+# DexScreener Integration (REQUIRED for trending - FREE, no key needed)
+# =============================================================================
+DEXSCREENER_API_URL=https://api.dexscreener.com/latest
+
+# =============================================================================
+# DexTools Integration (Optional)
+# =============================================================================
+DEXTOOLS_API_URL=https://www.dextools.io/shared/data
+DEXTOOLS_API_KEY=
+
+# =============================================================================
+# Birdeye Integration (Optional)
+# =============================================================================
+BIRDEYE_API_URL=https://public-api.birdeye.so
+BIRDEYE_API_KEY=
+
+# =============================================================================
 # Server Configuration (Render will set PORT automatically)
+# =============================================================================
 HOST=0.0.0.0
 DEBUG=False
 
+# =============================================================================
 # CORS Configuration
-FRONTEND_URL=https://snowpiercer-sepia.vercel.app
+# =============================================================================
+FRONTEND_URL=https://snowpiercer-pi.vercel.app
 FRONTEND_URL_DEV=http://localhost:3000
 
+# =============================================================================
 # Production Backend URL
+# =============================================================================
 BACKEND_URL=https://snowpiercer-backend-1.onrender.com
 API_BASE_URL=https://snowpiercer-backend-1.onrender.com/api
 
+# =============================================================================
 # Advanced bot configuration
+# =============================================================================
 JITO_ENDPOINT=https://mainnet.block-engine.jito.wtf
+USE_JITO=false
 
-# Redis configuration (if you add Redis later)
-# REDIS_URL=redis://your-redis-instance-url
-
-# Security
+# =============================================================================
+# Bot Configuration
+# =============================================================================
+SUB_WALLET_FUNDING_SOL=0.025
+GAS_FEE_RESERVE_SOL=0.5
+USABLE_BALANCE_PERCENTAGE=70
 MAX_CONCURRENT_JOBS=10
-MAX_MAKERS_PER_JOB=10000
+MAX_MAKERS_PER_JOB=100
 MIN_TRADE_SIZE_SOL=0.01
 MAX_TRADE_SIZE_SOL=0.1
 
-# Logging
-LOG_LEVEL=INFO
-LOG_FILE=volume_bot.log
+# =============================================================================
+# DexScreener Trending Optimization
+# =============================================================================
+DEXSCREENER_TARGET_VOLUME_24H=50000
+DEXSCREENER_TARGET_TRANSACTIONS=100
+DEXSCREENER_OPTIMAL_TRADE_SIZE_USD=500
+DEXSCREENER_CHECK_INTERVAL=300
 
+# =============================================================================
+# Logging
+# =============================================================================
+LOG_LEVEL=INFO
+LOG_FILE=volumebot.log
+
+# =============================================================================
 # Important Notes:
+# =============================================================================
 # 1. Do NOT set PORT in Render - it's automatically provided
 # 2. Set DEBUG=False for production
-# 3. Remove or comment out REDIS_URL if not using Redis yet
-# 4. You can add these one by one in Render's Environment tab
+# 3. DexScreener API is FREE - no key needed
+# 4. For production, use dedicated Solana RPC (Helius, QuickNode, Alchemy)
+# 5. Add these one by one in Render's Environment tab

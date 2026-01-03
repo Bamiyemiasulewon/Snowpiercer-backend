@@ -3,6 +3,8 @@ import uuid
 import logging
 import time
 import random
+import base64
+import os
 from datetime import datetime, timedelta
 from typing import Dict, Optional, List, Tuple
 from models import (
@@ -11,6 +13,11 @@ from models import (
 )
 from services.jupiter import JupiterService
 from services.websocket_manager import websocket_manager
+from solana.rpc.async_api import AsyncClient
+from solana.rpc.commitment import Confirmed
+from solana.keypair import Keypair
+from solders.pubkey import Pubkey
+from solders.transaction import VersionedTransaction
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +29,11 @@ class TradeExecutor:
         # Trade history storage (in production, this would be a database)
         self.trade_history: List[TradeHistoryEntry] = []
         self.execution_summaries: List[ExecutionSummary] = []
+        # Solana RPC client for real transaction execution
+        rpc_url = os.getenv("SOLANA_RPC_URL", "https://api.mainnet-beta.solana.com")
+        self.solana_client = AsyncClient(rpc_url)
+        # Store wallet keypairs for executions (in production, use secure key management)
+        self.wallet_keypairs: Dict[str, Keypair] = {}
         
     async def start_execution(self, request: TradeExecutionRequest) -> TradeExecutionResponse:
         """Start a new volume trading execution"""
@@ -148,6 +160,10 @@ class TradeExecutor:
                     delay = self._calculate_trade_delay(base_delay, request.strategy)
                     
                     # Execute buy trade (SOL -> Token)
+                    # Note: For real execution, wallet_keypair must be provided
+                    # In production, this should come from secure key management or frontend signing
+                    wallet_keypair = self.wallet_keypairs.get(request.walletPublicKey)
+                    
                     buy_result = await self._execute_single_trade(
                         execution_id=execution_id,
                         trade_number=trade_num,
@@ -156,7 +172,8 @@ class TradeExecutor:
                         output_mint=request.tokenMint,
                         amount_sol=request.tradeSizeSol,
                         slippage_bps=request.slippageBps,
-                        wallet_pubkey=request.walletPublicKey
+                        wallet_pubkey=request.walletPublicKey,
+                        wallet_keypair=wallet_keypair
                     )
                     
                     if not buy_result["success"]:
@@ -178,7 +195,8 @@ class TradeExecutor:
                         output_mint=SOL_MINT,
                         amount_tokens=sell_amount_tokens,
                         slippage_bps=request.slippageBps,
-                        wallet_pubkey=request.walletPublicKey
+                        wallet_pubkey=request.walletPublicKey,
+                        wallet_keypair=wallet_keypair
                     )
                     
                     # Update execution progress
@@ -259,84 +277,186 @@ class TradeExecutor:
         amount_sol: Optional[float] = None,
         amount_tokens: Optional[int] = None,
         slippage_bps: int = 50,
-        wallet_pubkey: str = None
+        wallet_pubkey: str = None,
+        wallet_keypair: Optional[Keypair] = None
     ) -> Dict:
-        """Execute a single trade (buy or sell)"""
+        """
+        Execute a single trade (buy or sell) with REAL Jupiter swap execution
+        
+        Args:
+            wallet_keypair: Optional Keypair for signing. If not provided, will try to get from wallet_keypairs dict.
+                          For security, prefer passing keypair directly rather than storing on backend.
+        """
+        max_retries = 3
+        retry_count = 0
+        
+        while retry_count < max_retries:
+            try:
+                # Determine amount based on trade type
+                if trade_type == "buy" and amount_sol:
+                    amount = int(amount_sol * 1_000_000_000)  # Convert SOL to lamports
+                elif trade_type == "sell" and amount_tokens:
+                    amount = amount_tokens
+                else:
+                    return {"success": False, "error": "Invalid amount specified"}
+                
+                # Create swap quote request
+                swap_request = SwapQuoteRequest(
+                    inputMint=input_mint,
+                    outputMint=output_mint,
+                    amount=amount,
+                    slippageBps=slippage_bps
+                )
+                
+                # Get quote and transaction from Jupiter
+                swap_response = await self.jupiter_service.get_swap_quote_and_transaction(swap_request)
+                
+                # Get wallet keypair for signing
+                if wallet_keypair is None:
+                    if wallet_pubkey and wallet_pubkey in self.wallet_keypairs:
+                        wallet_keypair = self.wallet_keypairs[wallet_pubkey]
+                    else:
+                        # If no keypair available, we cannot sign the transaction
+                        # In production, this would require frontend signing or secure key management
+                        logger.warning(f"No keypair available for wallet {wallet_pubkey}, cannot execute real swap")
+                        return {
+                            "success": False,
+                            "error": "Wallet keypair required for transaction signing. Use bot_logic for sub-wallet trades."
+                        }
+                
+                # Execute REAL swap transaction
+                swap_result = await self._execute_real_swap(
+                    swap_response.swapTransaction,
+                    wallet_keypair,
+                    wallet_pubkey or str(wallet_keypair.pubkey()),
+                    trade_type
+                )
+                
+                if not swap_result["success"]:
+                    logger.warning(f"Swap failed (attempt {retry_count + 1}/{max_retries}): {swap_result.get('error')}")
+                    retry_count += 1
+                    if retry_count < max_retries:
+                        await asyncio.sleep(2 ** retry_count)  # Exponential backoff
+                        continue
+                    else:
+                        return swap_result
+                
+                # Calculate fees (estimate based on transaction)
+                estimated_fees = 0.000005  # Base fee ~5000 lamports
+                if amount_sol:
+                    estimated_fees += amount_sol * 0.001  # ~0.1% trading fee estimate
+                
+                # Calculate execution price (approximate)
+                if trade_type == "buy" and amount_sol:
+                    execution_price = (swap_response.outputAmount / amount) * 100  # Rough USD estimate
+                else:
+                    execution_price = (amount / swap_response.outputAmount) * 100  # Rough USD estimate
+                
+                # Record trade in history
+                trade_entry = TradeHistoryEntry(
+                    executionId=execution_id,
+                    timestamp=datetime.utcnow().isoformat(),
+                    tokenMint=output_mint if trade_type == "buy" else input_mint,
+                    tradeType=trade_type,
+                    amount=amount_sol if amount_sol else amount_tokens / 1_000_000_000,
+                    price=execution_price,
+                    fees=estimated_fees,
+                    status="completed",
+                    txSignature=swap_result.get("signature")
+                )
+                
+                self.trade_history.append(trade_entry)
+                
+                logger.info(f"✅ Real swap executed: {trade_type} - TX: {swap_result.get('signature', 'N/A')[:16]}...")
+                
+                return {
+                    "success": True,
+                    "output_amount": swap_response.outputAmount,
+                    "fees": estimated_fees,
+                    "signature": swap_result.get("signature"),
+                    "price_impact": swap_response.priceImpact,
+                    "price": execution_price
+                }
+                
+            except Exception as e:
+                retry_count += 1
+                logger.error(f"Trade execution error (attempt {retry_count}/{max_retries}): {str(e)}")
+                
+                if retry_count >= max_retries:
+                    return {"success": False, "error": str(e)}
+                
+                await asyncio.sleep(2 ** retry_count)  # Exponential backoff
+        
+        return {"success": False, "error": "Max retries exceeded"}
+    
+    async def _execute_real_swap(
+        self,
+        swap_transaction_base64: str,
+        wallet_keypair: Keypair,
+        wallet_pubkey: str,
+        trade_type: str
+    ) -> Dict:
+        """
+        Execute REAL Jupiter swap transaction on Solana network
+        
+        Args:
+            swap_transaction_base64: Base64 encoded transaction from Jupiter
+            wallet_keypair: Keypair to sign the transaction
+            wallet_pubkey: Wallet public key for logging
+            trade_type: "buy" or "sell" for logging
+        
+        Returns:
+            Dict with success status, signature, and error if any
+        """
         try:
-            # Determine amount based on trade type
-            if trade_type == "buy" and amount_sol:
-                amount = int(amount_sol * 1_000_000_000)  # Convert SOL to lamports
-            elif trade_type == "sell" and amount_tokens:
-                amount = amount_tokens
-            else:
-                return {"success": False, "error": "Invalid amount specified"}
+            # Decode the transaction
+            transaction_bytes = base64.b64decode(swap_transaction_base64)
+            versioned_tx = VersionedTransaction.from_bytes(transaction_bytes)
             
-            # Create swap quote request
-            swap_request = SwapQuoteRequest(
-                inputMint=input_mint,
-                outputMint=output_mint,
-                amount=amount,
-                slippageBps=slippage_bps
+            # Sign the transaction with wallet keypair
+            versioned_tx.sign([wallet_keypair])
+            
+            # Send transaction to Solana network
+            logger.info(f"Sending {trade_type} transaction to Solana network...")
+            tx_signature = await self.solana_client.send_transaction(
+                versioned_tx,
+                opts={"skip_preflight": False, "max_retries": 3}
             )
             
-            # Get quote and transaction
-            swap_response = await self.jupiter_service.get_swap_quote_and_transaction(swap_request)
+            signature = str(tx_signature.value)
+            logger.info(f"Transaction sent: {signature[:16]}... (type: {trade_type})")
             
-            # In a real implementation, you would:
-            # 1. Sign the transaction with the wallet's private key
-            # 2. Send the transaction to the Solana network
-            # 3. Wait for confirmation
-            # 4. Parse the transaction results
-            
-            # For now, we'll simulate the trade execution
-            simulated_result = self._simulate_trade_execution(swap_response, trade_type)
-            
-            # Record trade in history
-            trade_entry = TradeHistoryEntry(
-                executionId=execution_id,
-                timestamp=datetime.utcnow().isoformat(),
-                tokenMint=output_mint if trade_type == "buy" else input_mint,
-                tradeType=trade_type,
-                amount=amount_sol if amount_sol else amount_tokens / 1_000_000_000,
-                price=simulated_result.get("price"),
-                fees=simulated_result.get("fees", 0),
-                status="completed",
-                txSignature=simulated_result.get("signature")
+            # Wait for confirmation
+            logger.info(f"Waiting for confirmation of {trade_type} transaction...")
+            confirmation = await self.solana_client.confirm_transaction(
+                signature,
+                commitment=Confirmed
             )
             
-            self.trade_history.append(trade_entry)
+            if confirmation.value.err:
+                error_msg = f"Transaction failed: {confirmation.value.err}"
+                logger.error(f"{trade_type.upper()} transaction failed: {error_msg}")
+                return {
+                    "success": False,
+                    "signature": signature,
+                    "error": error_msg
+                }
+            
+            logger.info(f"✅ {trade_type.upper()} transaction confirmed: {signature[:16]}...")
             
             return {
                 "success": True,
-                "output_amount": swap_response.outputAmount,
-                "fees": simulated_result.get("fees", 0),
-                "signature": simulated_result.get("signature"),
-                "price_impact": swap_response.priceImpact
+                "signature": signature,
+                "timestamp": datetime.utcnow().isoformat()
             }
             
         except Exception as e:
-            logger.error(f"Trade execution error: {str(e)}")
-            return {"success": False, "error": str(e)}
-    
-    def _simulate_trade_execution(self, swap_response, trade_type: str) -> Dict:
-        """Simulate trade execution results"""
-        # Generate fake transaction signature
-        fake_signature = ''.join(random.choices('123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz', k=88))
-        
-        # Estimate fees (0.1-0.3% + gas)
-        estimated_fees = random.uniform(0.001, 0.003)  # SOL
-        
-        # Simulate execution price
-        base_price = 100.0  # Mock price
-        price_variation = random.uniform(-0.02, 0.02)  # ±2% variation
-        execution_price = base_price * (1 + price_variation)
-        
-        return {
-            "signature": fake_signature,
-            "fees": estimated_fees,
-            "price": execution_price,
-            "timestamp": datetime.utcnow().isoformat()
-        }
+            logger.error(f"Error executing real swap ({trade_type}): {str(e)}")
+            return {
+                "success": False,
+                "error": str(e),
+                "timestamp": datetime.utcnow().isoformat()
+            }
     
     def _calculate_trade_delay(self, base_delay: float, strategy: str) -> float:
         """Calculate delay between trades based on strategy"""
@@ -348,10 +468,24 @@ class TradeExecutor:
             return random.uniform(base_delay * 0.8, base_delay * 1.2)
     
     async def _get_wallet_balance(self, wallet_pubkey: str) -> float:
-        """Get wallet SOL balance (simulated)"""
-        # In a real implementation, you would query the Solana RPC
-        # For now, return a simulated balance
-        return random.uniform(5.0, 50.0)  # Random balance between 5-50 SOL
+        """Get wallet SOL balance from Solana RPC"""
+        try:
+            pubkey = Pubkey.from_string(wallet_pubkey)
+            response = await self.solana_client.get_balance(pubkey)
+            
+            if response.value is None:
+                logger.warning(f"Could not get balance for wallet {wallet_pubkey}")
+                return 0.0
+            
+            # Convert lamports to SOL
+            balance_sol = response.value / 1_000_000_000
+            logger.debug(f"Wallet {wallet_pubkey[:8]}... balance: {balance_sol:.4f} SOL")
+            return balance_sol
+            
+        except Exception as e:
+            logger.error(f"Error getting wallet balance for {wallet_pubkey}: {str(e)}")
+            # Return 0 instead of random to avoid false positives
+            return 0.0
     
     def _create_execution_summary(self, execution_id: str):
         """Create execution summary for completed execution"""
@@ -406,3 +540,26 @@ class TradeExecutor:
             for exec_id, data in self.active_executions.items()
             if data["status"] in [TradeStatus.PENDING, TradeStatus.RUNNING, TradeStatus.PAUSED]
         }
+    
+    def register_wallet_keypair(self, wallet_pubkey: str, keypair: Keypair):
+        """
+        Register a wallet keypair for transaction signing
+        
+        WARNING: In production, use secure key management instead of storing keypairs in memory.
+        This is only suitable for sub-wallets generated by the bot.
+        """
+        self.wallet_keypairs[wallet_pubkey] = keypair
+        logger.info(f"Registered keypair for wallet {wallet_pubkey[:8]}...")
+    
+    def unregister_wallet_keypair(self, wallet_pubkey: str):
+        """Remove a wallet keypair from memory"""
+        if wallet_pubkey in self.wallet_keypairs:
+            del self.wallet_keypairs[wallet_pubkey]
+            logger.info(f"Unregistered keypair for wallet {wallet_pubkey[:8]}...")
+    
+    async def close(self):
+        """Cleanup resources"""
+        await self.solana_client.close()
+        # Clear keypairs from memory
+        self.wallet_keypairs.clear()
+        logger.info("TradeExecutor closed and resources cleaned up")
