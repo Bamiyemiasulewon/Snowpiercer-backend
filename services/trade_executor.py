@@ -15,7 +15,7 @@ from services.jupiter import JupiterService
 from services.websocket_manager import websocket_manager
 from solana.rpc.async_api import AsyncClient
 from solana.rpc.commitment import Confirmed
-from solana.keypair import Keypair
+from solders.keypair import Keypair
 from solders.pubkey import Pubkey
 from solders.transaction import VersionedTransaction
 

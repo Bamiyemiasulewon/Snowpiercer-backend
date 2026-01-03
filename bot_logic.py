@@ -8,7 +8,7 @@ import json
 from decimal import Decimal
 import numpy as np
 
-from solana.keypair import Keypair
+from solders.keypair import Keypair
 from solana.rpc.async_api import AsyncClient
 from solana.rpc.commitment import Confirmed, Finalized
 from solana.transaction import Transaction
