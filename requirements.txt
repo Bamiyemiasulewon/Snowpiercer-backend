@@ -7,7 +7,7 @@ python-dotenv==1.0.0
 # Solana Ecosystem
 solana==0.30.2
 solders==0.18.1
-base58==2.1.1  # Updated to latest available version
+base58==2.1.1
 construct==2.10.68
 
 # Web & API
@@ -19,7 +19,7 @@ python-multipart==0.0.6
 
 # System & Utils
 psutil==5.9.5
-legacy-cgi==1.0.0
+# Removing legacy-cgi as it's not needed and causing issues
 
 # Advanced Trading Bot
 redis==4.5.5
