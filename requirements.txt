@@ -7,7 +7,7 @@ python-dotenv==1.0.0
 # Solana Ecosystem
 solana==0.30.2
 solders==0.18.1
-base58==4.1.0
+base58==2.1.1  # Updated to latest available version
 construct==2.10.68
 
 # Web & API
@@ -32,10 +32,10 @@ python-jose[cryptography]>=3.3.0
 passlib[bcrypt]>=1.7.4
 asyncio-mqtt>=0.16.1
 
-# UPDATED FOR TRENDING METRICS: DexScreener/DexTools integration
+# DexScreener/DexTools integration
 beautifulsoup4>=4.12.0
 lxml>=4.9.2
 aiohttp>=3.8.0
 
-# UPDATED FOR RENDER DEPLOYMENT: Additional stability
+# Render Deployment
 gunicorn>=21.2.0
